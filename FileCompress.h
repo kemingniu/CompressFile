@@ -1,294 +1,254 @@
 #pragma once
 
-#include<iostream>
-#include<stdio.h>
-#include<string>
-#include "Heap.h"
+#include"HuffmanTree.h"
 #include<assert.h>
+#include<algorithm>
+#include<string>
 
-
-using namespace std;
-template<class T>
-struct HaffManTreeNode
-{
-	HaffManTreeNode<T>* _left;
-	HaffManTreeNode<T>* _right;
-	T _weight;
-
-	HaffManTreeNode(const T& w)
-		:_left(NULL)
-		, _right(NULL)
-		, _weight(w)
-	{
-	}
-
-};
+typedef long long LongType;
 struct CharInfo
 {
-	typedef unsigned long LongType;
-
-	unsigned char _ch;
-	LongType _count;
-	string _code;
+	unsigned char _ch;         //出现的字符
+	LongType _count;   //字符个数
+	string _code;   //HuffmanCode
 
 	CharInfo(LongType count = 0)
-		:_count(count)
+		:_ch(0)
+		,_count(count)  //_code不需用初始化，string会调用默认的构造函数
 	{}
 
-	CharInfo operator +(const CharInfo right) const
+	CharInfo operator+(const CharInfo& c)
 	{
-		return CharInfo(_count + right._count);
+		CharInfo tmp;
+		tmp._count = _count + c._count;
+		return tmp;
 	}
-
-	bool operator !=(const CharInfo right) const
+	bool operator != (const CharInfo c)
 	{
-		return _count != right._count;
+		return _count != c._count;
 	}
-	bool operator >(const CharInfo right) const
+	bool operator < (const CharInfo& c)const
 	{
-		return _count > right._count;
-	}
-	bool operator <(const CharInfo right) const
-	{
-		return _count < right._count;
+		return _count < c._count;
 	}
 
 };
-template<class T>
-class HaffManTree
-{
-
-	typedef HaffManTreeNode<T> Node;
-public:
-	HaffManTree(const T* a, size_t n, const T& invaid)
-	{
-		struct NodeCompare
-		{
-			bool operator()(Node* l, Node* r)
-			{
-				return l->_weight < r->_weight;
-			}
-		};
-
-		Heap<Node*, NodeCompare> minHeap;
-
-		for (size_t i = 0; i < n; i++)
-		{
-			if (a[i] != invaid)
-			{
-				minHeap.Push(new Node(a[i]));
-			}
-		}
-		while (minHeap.Size()>1)
-		{
-			Node* left = minHeap.Top();
-			minHeap.Pop();
-			Node* right = minHeap.Top();
-			minHeap.Pop();
-			Node* parent = new Node(left->_weight + right->_weight);
-			parent->_left = left;
-			parent->_right = right;
-			minHeap.Push(parent);
-		}
-		_root = minHeap.Top();
-	}
-
-	Node *GetRoot()
-	{
-		return _root;
-	}
-
-protected:
-	Node* _root;
-};
-
 
 class FileCompress
 {
 public:
 	FileCompress()
 	{
-		for (int i = 0; i < 256; i++)
+		for (int i = 0; i<256; ++i)
 		{
-			_infos[i]._ch = i;
-			_infos[i]._count = 0;
+			_str[i]._ch = i;
+			//在文本文件中，数据是以字符的ASCII码的形式存放，
+			//ASCII码的范围是0-255，所以文件压缩中用元素个数
+			//为256的数组作为底层数据结构，其中元素类型为CharInfo
+			//包括字符，字符出现的次数，字符编码；
 		}
 	}
-	void Compress(string filename)
+
+	string Compress(const char* FileName)
 	{
-		FILE *fout = fopen(filename.c_str(), "rb");
+		assert(FileName);
+		FILE* fout = fopen(FileName, "rb");  //以二进制形式打开，否则读不到汉字
 		assert(fout);
-		char ch = fgetc(fout);//读取文件字符
-		while (ch != EOF)
+
+
+		//unsigned char ch=fgetc(fout);
+		int ch = fgetc(fout);
+		while (!feof(fout))
 		{
-			_infos[(unsigned char)ch]._count++;
+			_str[ch]._count++;     //统计各种字符在文件中出现的次数
 			ch = fgetc(fout);
 		}
-		CharInfo invalid;
-		string code;
-		HaffManTree<CharInfo> tree(_infos, 256, invalid);//建立哈夫曼树
-		GenerateHaffManCode(tree.GetRoot(), code);//创建哈夫曼编码
 
-		//压缩
-		string compressName = filename + ".haffman";
-		FILE* fin = fopen(compressName.c_str(), "wb");
+		//根据统计的次数作为权值构建哈弗曼树
+		//count=0的相当于一个非法值，不用构建到huffmantree中
+		CharInfo invalid(0);
+		HuffmanTree<CharInfo> hf(_str, 256, invalid);
+
+		//生成叶子节点所对应的编码
+		string code;
+		_GenerateHuffmanCode(hf.GetRoot(), code);
+
+		//将编码写入压缩文件中
+		string CompressFileName = FileName;
+		CompressFileName += ".compress";
+		FILE* Input = fopen(CompressFileName.c_str(), "wb");
+		assert(Input);
 		fseek(fout, 0, SEEK_SET);
-		ch = fgetc(fout);
-		char value = 0;
+
+		char Inch = 0;   //要写入压缩文件的编码
 		int size = 0;
-		while (ch != EOF)
+		ch = fgetc(fout);
+		while (!feof(fout))
 		{
-			string code = _infos[(unsigned char)ch]._code;
-			for (int i = 0; i < code.size(); i++)
+			string& code = _str[ch]._code;
+			for (size_t i = 0; i < code.size(); ++i)
 			{
+				Inch <<= 1;
 				if (code[i] == '1')
 				{
-					value |= 1;
+					Inch |= 1;
 				}
 				++size;
 				if (size == 8)
 				{
-					fputc(value, fin);
-					value = 0;
+					fputc(Inch, Input);  //满8个字节就写入压缩文件
 					size = 0;
+					Inch = 0;
 				}
-				value <<= 1;
 			}
-
 			ch = fgetc(fout);
 		}
-		if (size > 0)
+		//最后不满8个字节的单独处理
+		if (size>0)
 		{
-			value <<= 7 - size;
-			fputc(value, fin);
+			Inch <<= 8 - size;
+			fputc(Inch, Input);
 		}
-		//写匹配文件
 
-		string configFile = filename += ".config";
-		FILE* fconfig = fopen(configFile.c_str(),"wb");
+		fclose(fout);   //关闭源文件
+		fclose(Input);  //关闭压缩文件
+
+		//写配置文件
+		//格式如：
+		//a,3
+		//b,2
+		string ConfigFileName = FileName;
+		ConfigFileName += ".config";
+		FILE* finConfig = fopen(ConfigFileName.c_str(), "wb");
 		string line;
-		for (int i = 0; i < 256; i++)
+		for (size_t i = 0; i<256; ++i)
 		{
-			if (_infos[i]._count>0)
+			if (_str[i]._count != 0)
 			{
-				line += _infos[i]._ch;
-				line += ",";
-				char buf[1024];
-				_itoa(_infos[i]._count, buf, 10);
-				line += buf;
+				line += _str[i]._ch;
+				line += ',';
+				char buff[25] = { 0 };       //将次数转换成字符串存储
+				line += _itoa(_str[i]._count, buff, 10); //10为保存到字符串中的数据的进制基数
 				line += '\n';
-				fputs(line.c_str(), fconfig);
-			}
-			line.clear();
-		}
-
-		fclose(fout);
-		fclose(fin);
-		fclose(fconfig);
-	}
-	void GenerateHaffManCode(HaffManTreeNode<CharInfo>* root, string code)
-	{
-		if (root == NULL)
-			return;
-		if (root->_left == NULL && root->_right == NULL)
-		{
-			_infos[root->_weight._ch]._code = code;
-			return;
-		}
-		GenerateHaffManCode(root->_left, code + '0');
-		GenerateHaffManCode(root->_right, code + '1');
-
-	}
-	bool ReadLine(FILE* fout,string& line)
-	{
-		char ch = fgetc(fout);
-		if (ch==EOF)
-		{
-			return false;
-		}
-		while (ch!=EOF && ch !='\n')
-		{
-			line += ch;
-			ch = fgetc(fout);
-		}
-		return true;
-	}
-	void UnCompress(string filename)
-	{
-		//读配置文件
-		string configname = filename + ".config";
-		FILE* fconfig = fopen(configname.c_str(),"rb");
-		assert(fconfig);
-		string line;
-
-		while(ReadLine(fconfig, line))
-		{
-			if (line.empty())
-			{
-				line += '\n';
-			}
-			else
-			{
-				unsigned char ch = line[0];
-				_infos[ch]._count = atoi(line.substr(2).c_str());
+				fwrite(line.c_str(), 1, line.size(), finConfig);
+				//fputs(line.c_str(),finConfig);
 				line.clear();
 			}
 		}
-		CharInfo invalid;
-		invalid._count = 0;
-		HaffManTree<CharInfo> tree(_infos, 256, invalid);
-		string compressFile = filename + ".haffman";
+		fclose(finConfig);   //关闭配置文件
+		return CompressFileName;       //返回压缩文件
+	}
 
-		FILE *fout = fopen(compressFile.c_str(), "rb");
-		assert(fout);
-		string uncompress = filename += "com";
-		FILE *fin = fopen(uncompress.c_str(), "wb");
-		unsigned char ch = fgetc(fout);
-		int pos = 7;
-		HaffManTreeNode<CharInfo>* root = tree.GetRoot();
-		HaffManTreeNode<CharInfo>* cur = root;
-		int count = root->_weight._count;
-		while (ch != EOF)
+	//解压缩文件
+	string Uncompress(const char* filename)
+	{
+		//先从配置文件中读出各种字符出现的个数
+		string ConfigFile = filename;
+		ConfigFile += ".config";
+		FILE* foutconfig = fopen(ConfigFile.c_str(), "rb");
+		assert(foutconfig);
+		string line;
+		while (ReadLine(foutconfig, line))
 		{
-			if (ch & (1 << pos))
+			//空行情况
+			if (line.empty())
 			{
-				cur = cur->_right;
+				line += '\n';
+				continue;
 			}
 			else
-				cur = cur->_left;
-			if (cur->_left == NULL && cur->_right == NULL)
 			{
-				fputc(cur->_weight._ch, fin);
-				count--;
-				cur = root;
+				unsigned char ch = line[0]; //压缩图片时崩溃，调试发现有负数情况要用unsigned char
+				//char ch=line[0];
+				//使用string::substr(pos)函数提取字符出现的次数
+				_str[ch]._count = atoi(line.substr(2).c_str());
+				line.clear();
 			}
-
-			if (pos == 0)
-			{
-				ch = fgetc(fout);
-				pos = 8;
-			}
-			pos--;
-			if (count == 0)
-				break;
 		}
 
-		fclose(fout);
+		//重新构建Huffman树
+		CharInfo invalid(0);
+		HuffmanTree<CharInfo> hf(_str, 256, invalid);
+
+		//开始解压缩
+		string uncompressfilename = filename;
+		uncompressfilename += ".uncompress";
+		FILE *fin = fopen(uncompressfilename.c_str(), "wb");
+		assert(fin);
+		//先读取压缩文件
+		string compressfilename = filename;
+		compressfilename += ".compress";
+		FILE *fout = fopen(compressfilename.c_str(), "rb");
+		assert(fout);
+
+		//根结点的权值是字符出现的次数总和
+		HuffmanTreeNode<CharInfo> *root = hf.GetRoot();
+		LongType chLen = root->_weight._count;
+		HuffmanTreeNode<CharInfo> *cur = root;
+		//int pos=8;
+		int pos = 7;
+		//unsigned char ch=fgetc(fout);
+		int ch = fgetc(fout);
+		while (chLen>0)
+		{
+			//--pos;
+			if (ch & (1 << pos))    //检查字符的每个位
+				cur = cur->_right;
+			else
+				cur = cur->_left;     //0左，1右
+			--pos;
+
+			if (cur->_left == NULL && cur->_right == NULL)
+			{
+				fputc(cur->_weight._ch, fin); //将对应字符写入解压缩文件中
+				cur = root;                   //一条路径走完再次回到根节点
+				--chLen;
+				if (chLen == 0)   //所有的字符都处理完成
+					break;
+			}
+
+			
+			if (pos == -1)
+			{
+				ch = fgetc(fout);
+				pos = 7;
+			}
+		}
+		fclose(foutconfig);
 		fclose(fin);
-		fclose(fconfig);
+		fclose(fout);
+		return uncompressfilename;
+	}
+
+protected:
+	void _GenerateHuffmanCode(HuffmanTreeNode<CharInfo>* root, string& code)
+	{
+		if (NULL == root)
+		{
+			return;
+		}
+		if (root->_left == NULL && root->_right == NULL)
+		{
+			_str[root->_weight._ch]._code = code;
+		}
+		_GenerateHuffmanCode(root->_left, code + '0');
+		_GenerateHuffmanCode(root->_right, code + '1');
+	}
+
+	bool ReadLine(FILE *fOut, string& line)
+	{
+		//unsigned char ch = fgetc(fOut);
+		int ch = fgetc(fOut);
+		if (feof(fOut))
+			return false;
+		while (!feof(fOut) && ch != '\n')
+		{
+			line += ch;
+			ch = fgetc(fOut);
+		}
+		return true;
 	}
 protected:
-	CharInfo _infos[256];
+	CharInfo _str[256];
 };
-
-void TestCompressFile()
-{
-	FileCompress file;
-	file.Compress("a.txt");
-}
-void TestUnCompressFile()
-{
-	FileCompress file;
-	file.UnCompress("a.txt");
-}
 
