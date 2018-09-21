@@ -14,7 +14,7 @@ struct CharInfo
 
 	CharInfo(LongType count = 0)
 		:_ch(0)
-		,_count(count)  //_code不需用初始化，string会调用默认的构造函数
+		,_count(count)  
 	{}
 
 	CharInfo operator+(const CharInfo& c)
