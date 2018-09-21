@@ -4,7 +4,7 @@
 #include<iostream>
 using namespace std; 
 
-// 仿函数
+
 template <class T>
 struct Less
 {
@@ -136,9 +136,7 @@ protected:
 	}
 
 protected:
-	//T* _a;
-	//size_t _size;
-	//size_t _capacity;
+	
 	vector<T> _a;
 
 };
